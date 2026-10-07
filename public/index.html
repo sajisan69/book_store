@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookstore</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Work+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f5f7;--ink:#1b2430;--muted:#5b6673;--line:#d5dbe1;--accent:#0f6b6b;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Work Sans",system-ui,sans-serif;line-height:1.5}
+header{padding:48px 24px 24px;max-width:1000px;margin:0 auto}
+h1{font-family:Fraunces,Georgia,serif;font-size:clamp(2.2rem,6vw,3.6rem);margin:0 0 8px;line-height:1.05}
+header p{margin:0 0 20px;color:var(--muted)}
+input{width:100%;max-width:420px;padding:10px 14px;font:inherit;border:1px solid var(--line);border-radius:6px;background:var(--card)}
+input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+main{max-width:1000px;margin:0 auto;padding:8px 24px 64px}
+#status{color:var(--muted);padding:16px 0}
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:28px 22px}
+.book{all:unset;cursor:pointer;display:block}
+.book:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+.cover{aspect-ratio:2/3;border-radius:2px 6px 6px 2px;position:relative;overflow:hidden;box-shadow:inset 8px 0 0 rgba(0,0,0,.18),0 6px 14px rgba(27,36,48,.18);color:#fff;display:flex;flex-direction:column;justify-content:flex-end;padding:18px 16px 16px 24px;transition:transform .15s}
+.book:hover .cover{transform:translateY(-4px)}
+.cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cover b{font-family:Fraunces,Georgia,serif;font-size:1.25rem;line-height:1.15;position:relative}
+.cover span{font-size:.8rem;opacity:.85;margin-top:6px;position:relative}
+.meta{padding-top:10px;font-size:.92rem}
+.meta .price{font-weight:500}
+.meta .low{color:#9a5b00}
+dialog{border:none;border-radius:10px;padding:28px;max-width:460px;width:calc(100% - 32px);box-shadow:0 20px 50px rgba(0,0,0,.3)}
+dialog::backdrop{background:rgba(27,36,48,.55)}
+dialog h2{font-family:Fraunces,Georgia,serif;margin:0 0 4px}
+dialog .by{color:var(--muted);margin:0 0 16px}
+dialog dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:16px 0 20px}
+dialog dt{color:var(--muted)}dialog dd{margin:0}
+button.close{font:inherit;padding:8px 16px;border:1px solid var(--ink);background:var(--ink);color:#fff;border-radius:6px;cursor:pointer}
+@media (prefers-reduced-motion:reduce){.cover{transition:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Bookstore</h1>
+  <p>Browse what is on the shelf.</p>
+  <input id="search" type="search" placeholder="Search by title or author" aria-label="Search books">
+</header>
+<main>
+  <div id="status" role="status">Loading books…</div>
+  <div id="grid"></div>
+</main>
+<dialog id="detail" aria-labelledby="d-title">
+  <h2 id="d-title"></h2>
+  <p class="by" id="d-author"></p>
+  <p id="d-desc"></p>
+  <dl>
+    <dt>Price</dt><dd id="d-price"></dd>
+    <dt>In stock</dt><dd id="d-stock"></dd>
+  </dl>
+  <button class="close" id="d-close">Close</button>
+</dialog>
+<script>
+const API = "http://localhost:5000/api/books";
+const COLORS = ["#0f6b6b","#7a2e3b","#2f4a7a","#6b5a1f","#4b3a6b","#2d5a3d","#8a4a1c"];
+const grid = document.getElementById("grid");
+const statusEl = document.getElementById("status");
+const dialog = document.getElementById("detail");
+let books = [];
+
+const colorFor = s => COLORS[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
+const money = n => "$" + Number(n).toFixed(2);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+
+function card(book) {
+  const btn = el("button", undefined, "book");
+  btn.type = "button";
+  const cover = el("div", undefined, "cover");
+  cover.style.background = colorFor(book.title);
+  if (book.cover) {
+    const img = new Image();
+    img.alt = "";
+    img.onload = () => cover.prepend(img);
+    img.src = book.cover;
+  }
+  cover.append(el("b", book.title), el("span", book.author));
+  const meta = el("div", undefined, "meta");
+  meta.append(el("span", money(book.price), "price"));
+  meta.append(document.createTextNode(" · "));
+  meta.append(el("span", book.stock > 0 ? book.stock + " in stock" : "Out of stock", book.stock < 5 ? "low" : ""));
+  btn.append(cover, meta);
+  btn.addEventListener("click", () => openDetail(book._id));
+  return btn;
+}
+
+function render(list) {
+  grid.replaceChildren(...list.map(card));
+  statusEl.textContent = list.length ? "" : "No books match your search.";
+}
+
+async function openDetail(id) {
+  try {
+    const res = await fetch(API + "/" + id);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    const b = json.data;
+    document.getElementById("d-title").textContent = b.title;
+    document.getElementById("d-author").textContent = "by " + b.author;
+    document.getElementById("d-desc").textContent = b.description || "No description yet.";
+    document.getElementById("d-price").textContent = money(b.price);
+    document.getElementById("d-stock").textContent = b.stock;
+    dialog.showModal();
+  } catch (e) {
+    statusEl.textContent = "Could not load that book: " + e.message;
+  }
+}
+
+document.getElementById("d-close").addEventListener("click", () => dialog.close());
+dialog.addEventListener("click", e => { if (e.target === dialog) dialog.close(); });
+document.getElementById("search").addEventListener("input", e => {
+  const q = e.target.value.trim().toLowerCase();
+  render(books.filter(b => (b.title + " " + b.author).toLowerCase().includes(q)));
+});
+
+(async () => {
+  try {
+    const res = await fetch(API);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    books = json.data;
+    if (!books.length) { statusEl.textContent = "No books yet. Run npm run seed to add sample books."; return; }
+    render(books);
+  } catch (e) {
+    statusEl.textContent = "Could not load books: " + e.message + ". Is the server running?";
+  }
+})();
+</script>
+</body>
+</html>
